@@ -617,31 +617,37 @@ async def get_kline(
         if start_date:
             from datetime import datetime
             try:
+                # 清理日期字符串（处理URL编码的+号）
+                start_date = start_date.strip().replace('+', ' ')
+                
                 if len(start_date) == 10:  # YYYY-MM-DD
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
                 else:  # YYYY-MM-DD HH:MM:SS
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
                 start_timestamp = int(start_dt.timestamp())
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS"
+                    detail=f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。错误: {str(e)}"
                 )
         
         if end_date:
             from datetime import datetime, timedelta
             try:
+                # 清理日期字符串（处理URL编码的+号）
+                end_date = end_date.strip().replace('+', ' ')
+                
                 if len(end_date) == 10:  # YYYY-MM-DD
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
                     # 如果只提供日期，设置为当天的23:59:59
                     end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
                 else:  # YYYY-MM-DD HH:MM:SS
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:MM:%S")
                 end_timestamp = int(end_dt.timestamp())
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS"
+                    detail=f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。错误: {str(e)}"
                 )
         
         # 自动判断市场类型

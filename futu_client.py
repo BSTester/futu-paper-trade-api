@@ -1090,33 +1090,40 @@ class FutuClient:
         if start_date:
             from datetime import datetime
             try:
+                # 清理日期字符串（处理URL编码的+号）
+                start_date = start_date.strip().replace('+', ' ')
+                
                 # 尝试解析日期格式
                 if len(start_date) == 10:  # YYYY-MM-DD
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
                 else:  # YYYY-MM-DD HH:MM:SS
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
                 start_timestamp = int(start_dt.timestamp())
-            except ValueError:
+            except ValueError as e:
                 return {
                     "error": f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+                    "detail": str(e),
                     "symbol": symbol
                 }
         
         if end_date:
-            from datetime import datetime
+            from datetime import datetime, timedelta
             try:
+                # 清理日期字符串（处理URL编码的+号）
+                end_date = end_date.strip().replace('+', ' ')
+                
                 # 尝试解析日期格式
                 if len(end_date) == 10:  # YYYY-MM-DD
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
                     # 如果只提供日期，设置为当天的23:59:59
-                    from datetime import timedelta
                     end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
                 else:  # YYYY-MM-DD HH:MM:SS
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
                 end_timestamp = int(end_dt.timestamp())
-            except ValueError:
+            except ValueError as e:
                 return {
                     "error": f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+                    "detail": str(e),
                     "symbol": symbol
                 }
         
