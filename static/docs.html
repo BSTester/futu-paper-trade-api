@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>富途模拟交易API - 文档</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .nav {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        .nav a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        .nav a:hover {
+            background: #667eea;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .get { background: #61affe; color: white; }
+        .post { background: #49cc90; color: white; }
+        .delete { background: #f93e3e; color: white; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .feature {
+            display: inline-block;
+            background: #e7f3ff;
+            color: #0066cc;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 富途模拟交易API</h1>
+        <p>支持美股、港股、A股的模拟交易API服务</p>
+    </div>
+    
+    <div class="nav">
+        <a href="/docs">Swagger UI</a>
+        <a href="/openapi.json">OpenAPI JSON</a>
+        <a href="/">返回首页</a>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>📖 快速开始</h2>
+            <p>欢迎使用富途模拟交易API！本服务提供完整的模拟交易功能。</p>
+            
+            <h3>✨ 主要特性</h3>
+            <div>
+                <span class="feature">🌍 多市场支持</span>
+                <span class="feature">📊 实时行情</span>
+                <span class="feature">💰 模拟交易</span>
+                <span class="feature">📈 持仓管理</span>
+                <span class="feature">🔄 订单管理</span>
+            </div>
+            
+            <h3>🎯 支持的市场</h3>
+            <ul>
+                <li><strong>美股 (US)</strong> - 纳斯达克、纽交所等</li>
+                <li><strong>港股 (HK)</strong> - 香港交易所</li>
+                <li><strong>A股 (CN)</strong> - 沪深交易所</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>🔌 核心接口</h2>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/accounts</strong>
+                <p>获取账户列表</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/account/info</strong>
+                <p>获取账户详情（资产、余额、盈亏等）</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/positions</strong>
+                <p>获取持仓列表</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/stock/search</strong>
+                <p>搜索股票</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/stock/quote</strong>
+                <p>获取股票行情</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/trade</strong>
+                <p>下单交易（买入/卖出）</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/trade/buy</strong>
+                <p>快速买入</p>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <strong>/api/trade/sell</strong>
+                <p>快速卖出</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📝 使用示例</h2>
+            
+            <h3>买入股票</h3>
+            <pre>
+POST /api/trade/buy
+Content-Type: application/json
+
+{
+  "stock_code": "AAPL",
+  "market_type": "US",
+  "quantity": 10,
+  "price": 180.0,
+  "order_type": "LIMIT"
+}</pre>
+            
+            <h3>卖出股票</h3>
+            <pre>
+POST /api/trade/sell
+Content-Type: application/json
+
+{
+  "stock_code": "AAPL",
+  "market_type": "US",
+  "quantity": 10,
+  "price": 185.0,
+  "order_type": "LIMIT"
+}</pre>
+            
+            <h3>查询持仓</h3>
+            <pre>
+GET /api/positions?market_type=US</pre>
+        </div>
+        
+        <div class="card">
+            <h2>🔗 相关链接</h2>
+            <ul>
+                <li><a href="/docs" target="_blank">Swagger UI 文档</a> - 交互式API文档</li>
+                <li><a href="/openapi.json" target="_blank">OpenAPI JSON</a> - API规范文件</li>
+                <li><a href="/health" target="_blank">健康检查</a> - 服务状态</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>⚠️ 注意事项</h2>
+            <ul>
+                <li>本服务仅用于模拟交易，不涉及真实资金</li>
+                <li>Cookie 会过期，需要定期更新</li>
+                <li>注意各市场的交易时间</li>
+                <li>不同市场有不同的最小交易单位</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // 检查服务状态
+        fetch('/health')
+            .then(res => res.json())
+            .then(data => {
+                console.log('Service status:', data);
+            })
+            .catch(err => {
+                console.error('Service check failed:', err);
+            });
+    </script>
+</body>
+</html>

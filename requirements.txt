@@ -1,0 +1,15 @@
+# 核心依赖
+httpx>=0.25.1
+python-dotenv>=1.0.0
+pydantic>=2.9.2
+
+# 时区处理（Python < 3.9 需要）
+pytz>=2023.3
+
+# 数据分析（技术指标计算）
+pandas>=2.0.0
+numpy>=1.24.0
+
+# API服务（可选，如果需要提供REST API）
+fastapi>=0.104.1
+uvicorn>=0.24.0
