@@ -59,15 +59,6 @@ docker-compose up -d
 - ✅ 热门股票和新闻
 - ✅ API Key 鉴权
 
-## 文档
-
-详细文档请查看 [docs](./docs) 目录：
-
-- [API接口文档](./docs/API_REFERENCE.md)
-- [API Key鉴权说明](./docs/API_KEY_AUTH.md)
-- [快速开始指南](./docs/快速开始指南.md)
-- [Docker部署指南](./DOCKER_GUIDE.md)
-
 ## 技术栈
 
 - FastAPI - Web框架

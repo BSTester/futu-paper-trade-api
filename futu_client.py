@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from config import (
     FUTU_COOKIE, FUTU_BASE_URL, FUTU_MATCH_URL,
-    MARKET_TYPE, ORDER_SIDE, ORDER_TYPE, SECURITY_TYPE,
+    MARKET_TYPE, ORDER_SIDE, ORDER_TYPE, PERIOD_TYPE, SECURITY_TYPE,
     ACCOUNT_MAPPING
 )
 from models import (
@@ -544,7 +544,8 @@ class FutuClient:
                 market_type
             )
             if quotes:
-                trade_request.price = quotes[0].current_price
+                # quotes 是字典列表，不是对象
+                trade_request.price = quotes[0]["current_price"]
         
         if not trade_request.price:
             return TradeResponse(
@@ -564,15 +565,21 @@ class FutuClient:
             # 美股使用 inputIntegratedOrder 接口
             params = {"_m": "inputIntegratedOrder"}
             
+            # 订单类型：1=限价单, 2=碎股单, 3=市价单
+            order_type_code = ORDER_TYPE[order_type]
+            
+            # 时段类型：REGULAR=仅盘中（市价单只能盘中）, EXTENDED=全时段（限价单可以全时段）
+            period_type_code = PERIOD_TYPE["REGULAR"] if order_type == "MARKET" else PERIOD_TYPE["EXTENDED"]
+            
             order_data = {
                 "account_id": str(account_id),
                 "market_type": 100,
                 "price": str(trade_request.price),
                 "side": side_code,
                 "quantity": trade_request.quantity,
-                "order_type": 1,
+                "order_type": order_type_code,
                 "security_id": str(security_id),
-                "period_type": 2  # 2=正常交易时段
+                "period_type": period_type_code
             }
         else:
             # A股/港股使用 inputOrder 接口
