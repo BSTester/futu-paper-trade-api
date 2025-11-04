@@ -1075,12 +1075,13 @@ class FutuClient:
         
         if not kline_list:
             return {
-                "error": "无K线数据",
+                "error": "未获取到K线数据",
                 "symbol": symbol,
                 "stock_name": stock.stock_name,
                 "market_type": market_type,
-                "kline_type": kline_type,
-                "debug_keys": list(kline_data.keys()) if isinstance(kline_data, dict) else "not a dict"
+                "interval": interval,
+                "message": "可能原因：1) 该股票在指定日期范围内没有交易数据 2) 股票代码不正确 3) 市场休市",
+                "upstream_response": kline_data
             }
         
         # 解析日期范围（如果提供）
@@ -1090,18 +1091,47 @@ class FutuClient:
         if start_date:
             from datetime import datetime
             try:
-                # 清理日期字符串（处理URL编码的+号）
-                start_date = start_date.strip().replace('+', ' ')
+                # 清理日期字符串
+                start_date = start_date.strip()
                 
-                # 尝试解析日期格式
-                if len(start_date) == 10:  # YYYY-MM-DD
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                else:  # YYYY-MM-DD HH:MM:SS
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+                # 只接受日期格式 YYYY-MM-DD
+                if len(start_date) != 10:
+                    return {
+                        "error": f"日期格式错误: {start_date}，请只使用日期格式 YYYY-MM-DD（如 2025-11-01）",
+                        "symbol": symbol
+                    }
+                
+                # 根据市场类型使用对应的时区
+                try:
+                    from zoneinfo import ZoneInfo
+                    if market_type == "US":
+                        tz = ZoneInfo("America/New_York")
+                    elif market_type == "HK":
+                        tz = ZoneInfo("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = ZoneInfo("Asia/Shanghai")
+                    else:
+                        tz = ZoneInfo("Asia/Shanghai")
+                    
+                    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=tz)
+                except ImportError:
+                    # 如果 zoneinfo 不可用，使用 pytz
+                    import pytz
+                    if market_type == "US":
+                        tz = pytz.timezone("America/New_York")
+                    elif market_type == "HK":
+                        tz = pytz.timezone("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = pytz.timezone("Asia/Shanghai")
+                    else:
+                        tz = pytz.timezone("Asia/Shanghai")
+                    
+                    start_dt = tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
+                
                 start_timestamp = int(start_dt.timestamp())
             except ValueError as e:
                 return {
-                    "error": f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+                    "error": f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD",
                     "detail": str(e),
                     "symbol": symbol
                 }
@@ -1109,20 +1139,49 @@ class FutuClient:
         if end_date:
             from datetime import datetime, timedelta
             try:
-                # 清理日期字符串（处理URL编码的+号）
-                end_date = end_date.strip().replace('+', ' ')
+                # 清理日期字符串
+                end_date = end_date.strip()
                 
-                # 尝试解析日期格式
-                if len(end_date) == 10:  # YYYY-MM-DD
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    # 如果只提供日期，设置为当天的23:59:59
-                    end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
-                else:  # YYYY-MM-DD HH:MM:SS
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+                # 只接受日期格式 YYYY-MM-DD
+                if len(end_date) != 10:
+                    return {
+                        "error": f"日期格式错误: {end_date}，请只使用日期格式 YYYY-MM-DD（如 2025-11-01）",
+                        "symbol": symbol
+                    }
+                
+                # 根据市场类型使用对应的时区
+                try:
+                    from zoneinfo import ZoneInfo
+                    if market_type == "US":
+                        tz = ZoneInfo("America/New_York")
+                    elif market_type == "HK":
+                        tz = ZoneInfo("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = ZoneInfo("Asia/Shanghai")
+                    else:
+                        tz = ZoneInfo("Asia/Shanghai")
+                    
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=tz)
+                except ImportError:
+                    # 如果 zoneinfo 不可用，使用 pytz
+                    import pytz
+                    if market_type == "US":
+                        tz = pytz.timezone("America/New_York")
+                    elif market_type == "HK":
+                        tz = pytz.timezone("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = pytz.timezone("Asia/Shanghai")
+                    else:
+                        tz = pytz.timezone("Asia/Shanghai")
+                    
+                    end_dt = tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+                
+                # 设置为当天的23:59:59
+                end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
                 end_timestamp = int(end_dt.timestamp())
             except ValueError as e:
                 return {
-                    "error": f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+                    "error": f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD",
                     "detail": str(e),
                     "symbol": symbol
                 }
@@ -1201,14 +1260,39 @@ class FutuClient:
                 "volume": volume
             })
         
+        # 检查是否有有效数据
+        if not df_data:
+            return {
+                "error": "指定日期范围内没有有效的K线数据",
+                "symbol": symbol,
+                "stock_name": stock.stock_name,
+                "market_type": market_type,
+                "interval": interval,
+                "date_range": {
+                    "start_date": start_date,
+                    "end_date": end_date
+                },
+                "message": "可能原因：1) 该日期范围内市场休市 2) 日期范围超出数据可用范围 3) 股票在该时间段未交易"
+            }
+        
         df = pd.DataFrame(df_data)
         
         # 确保所有价格列都是浮点数类型
-        df['open'] = df['open'].astype(float)
-        df['high'] = df['high'].astype(float)
-        df['low'] = df['low'].astype(float)
-        df['close'] = df['close'].astype(float)
-        df['volume'] = df['volume'].astype(int)
+        try:
+            df['open'] = df['open'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['close'] = df['close'].astype(float)
+            df['volume'] = df['volume'].astype(int)
+        except KeyError as e:
+            return {
+                "error": f"数据格式错误，缺少必需字段: {str(e)}",
+                "symbol": symbol,
+                "stock_name": stock.stock_name,
+                "interval": interval,
+                "available_columns": list(df.columns) if len(df) > 0 else [],
+                "message": "上游API返回的数据格式不符合预期"
+            }
         
         # 过滤掉无效数据（价格为0或时间为空）
         df = df[(df['close'] > 0) & (df['time'].notna())].copy()
@@ -1224,10 +1308,12 @@ class FutuClient:
         
         if len(df) == 0:
             return {
-                "error": "没有有效的K线数据",
+                "error": "过滤后没有有效的K线数据",
                 "symbol": symbol,
                 "stock_name": stock.stock_name,
-                "market_type": market_type
+                "market_type": market_type,
+                "interval": interval,
+                "message": "所有数据点的价格都为0或时间戳无效"
             }
         
         # 如果是周K及以下时间间隔且未指定日期范围，基于数据最新日期限制为最近1个月

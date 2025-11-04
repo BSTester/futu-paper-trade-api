@@ -422,8 +422,8 @@ async def get_technical_analysis(
     - **format**: 返回格式（可选，默认json）
       - json: JSON格式
       - csv: CSV格式
-    - **start_date**: 开始日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
-    - **end_date**: 结束日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
+    - **start_date**: 开始日期（可选，格式：YYYY-MM-DD）
+    - **end_date**: 结束日期（可选，格式：YYYY-MM-DD）
     
     返回技术分析指标的时间序列数据，可用于绘制曲线图
     
@@ -441,7 +441,7 @@ async def get_technical_analysis(
     - 如果不指定日期范围，返回所有可用数据
     - **周K线特殊处理**：如果不指定日期范围，默认返回最近1个月的数据
     - 如果指定日期范围，只返回该范围内的数据
-    - 日期格式支持：YYYY-MM-DD（如 2025-01-01）或 YYYY-MM-DD HH:MM:SS（如 2025-01-01 09:30:00）
+    - 日期格式：YYYY-MM-DD（如 2025-11-01），自动包含当天全天数据
     
     **示例**:
     ```
@@ -450,9 +450,9 @@ async def get_technical_analysis(
     GET /api/technical-analysis?symbol=AAPL&interval=5min&indicator=rsi
     GET /api/technical-analysis?symbol=AAPL&interval=60min&indicator=boll
     GET /api/technical-analysis?symbol=AAPL&format=csv
-    GET /api/technical-analysis?symbol=AAPL&start_date=2025-01-01&end_date=2025-10-31
-    GET /api/technical-analysis?symbol=AAPL&interval=daily&indicator=macd&start_date=2025-01-01
-    GET /api/technical-analysis?symbol=AAPL&interval=5min&start_date=2025-11-01 09:30:00&end_date=2025-11-01 16:00:00
+    GET /api/technical-analysis?symbol=AAPL&start_date=2025-10-01&end_date=2025-10-31
+    GET /api/technical-analysis?symbol=AAPL&interval=daily&indicator=macd&start_date=2025-10-01
+    GET /api/technical-analysis?symbol=AAPL&interval=5min&start_date=2025-11-01&end_date=2025-11-01
     ```
     
     **CSV格式返回示例**:
@@ -486,9 +486,9 @@ async def get_technical_analysis(
             end_date=end_date
         )
         
-        # 检查是否有错误
+        # 检查是否有错误（直接返回错误信息，不抛出异常）
         if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
+            return result
         
         # 根据格式返回数据
         if format_lower == "csv":
@@ -527,8 +527,8 @@ async def get_kline(
       - 分钟级: 1min, 5min, 15min, 30min, 60min
       - 日线及以上: daily, weekly, monthly, quarterly, yearly
       - 注意：周K及以下时间间隔不指定日期时默认返回最近1个月数据（基于数据最新日期）
-    - **start_date**: 开始日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
-    - **end_date**: 结束日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
+    - **start_date**: 开始日期（可选，格式：YYYY-MM-DD）
+    - **end_date**: 结束日期（可选，格式：YYYY-MM-DD）
     - **format**: 返回格式（可选，默认json）
       - json: JSON格式
       - csv: CSV格式
@@ -549,7 +549,7 @@ async def get_kline(
     - 如果不指定日期范围，返回所有可用数据
     - **周K线特殊处理**：如果不指定日期范围，默认返回最近1个月的数据
     - 如果指定日期范围，只返回该范围内的数据
-    - 日期格式支持：YYYY-MM-DD（如 2025-01-01）或 YYYY-MM-DD HH:MM:SS（如 2025-01-01 09:30:00）
+    - 日期格式：YYYY-MM-DD（如 2025-11-01），自动包含当天全天数据
     
     **示例**:
     ```
@@ -558,7 +558,7 @@ async def get_kline(
     GET /api/kline?symbol=AAPL&interval=5min
     GET /api/kline?symbol=00700&interval=weekly
     GET /api/kline?symbol=AAPL&start_date=2025-10-01&end_date=2025-10-31
-    GET /api/kline?symbol=AAPL&interval=5min&start_date=2025-11-01 09:30:00&end_date=2025-11-01 16:00:00
+    GET /api/kline?symbol=AAPL&interval=5min&start_date=2025-11-01&end_date=2025-11-01
     GET /api/kline?symbol=AAPL&interval=daily&format=csv
     ```
     
@@ -610,6 +610,9 @@ async def get_kline(
         short_intervals = ["weekly", "daily", "60min", "30min", "15min", "5min", "1min"]
         apply_default_range = interval in short_intervals and not start_date and not end_date
         
+        # 自动判断市场类型（需要在日期解析之前，因为日期解析需要知道时区）
+        market_type = futu_client._detect_market_type(symbol)
+        
         # 解析日期范围（如果提供）
         start_timestamp = None
         end_timestamp = None
@@ -617,41 +620,98 @@ async def get_kline(
         if start_date:
             from datetime import datetime
             try:
-                # 清理日期字符串（处理URL编码的+号）
-                start_date = start_date.strip().replace('+', ' ')
+                # 清理日期字符串
+                start_date = start_date.strip()
                 
-                if len(start_date) == 10:  # YYYY-MM-DD
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                else:  # YYYY-MM-DD HH:MM:SS
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+                # 只接受日期格式 YYYY-MM-DD
+                if len(start_date) != 10:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"日期格式错误: {start_date}，请只使用日期格式 YYYY-MM-DD（如 2025-11-01）"
+                    )
+                
+                # 根据市场类型使用对应的时区
+                try:
+                    from zoneinfo import ZoneInfo
+                    if market_type == "US":
+                        tz = ZoneInfo("America/New_York")
+                    elif market_type == "HK":
+                        tz = ZoneInfo("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = ZoneInfo("Asia/Shanghai")
+                    else:
+                        tz = ZoneInfo("Asia/Shanghai")
+                    
+                    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=tz)
+                except ImportError:
+                    # 如果 zoneinfo 不可用，使用 pytz
+                    import pytz
+                    if market_type == "US":
+                        tz = pytz.timezone("America/New_York")
+                    elif market_type == "HK":
+                        tz = pytz.timezone("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = pytz.timezone("Asia/Shanghai")
+                    else:
+                        tz = pytz.timezone("Asia/Shanghai")
+                    
+                    start_dt = tz.localize(datetime.strptime(start_date, "%Y-%m-%d"))
+                
                 start_timestamp = int(start_dt.timestamp())
             except ValueError as e:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。错误: {str(e)}"
+                    detail=f"无效的开始日期格式: {start_date}，请使用 YYYY-MM-DD。错误: {str(e)}"
                 )
         
         if end_date:
             from datetime import datetime, timedelta
             try:
-                # 清理日期字符串（处理URL编码的+号）
-                end_date = end_date.strip().replace('+', ' ')
+                # 清理日期字符串
+                end_date = end_date.strip()
                 
-                if len(end_date) == 10:  # YYYY-MM-DD
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    # 如果只提供日期，设置为当天的23:59:59
-                    end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
-                else:  # YYYY-MM-DD HH:MM:SS
-                    end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:MM:%S")
+                # 只接受日期格式 YYYY-MM-DD
+                if len(end_date) != 10:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"日期格式错误: {end_date}，请只使用日期格式 YYYY-MM-DD（如 2025-11-01）"
+                    )
+                
+                # 根据市场类型使用对应的时区
+                try:
+                    from zoneinfo import ZoneInfo
+                    if market_type == "US":
+                        tz = ZoneInfo("America/New_York")
+                    elif market_type == "HK":
+                        tz = ZoneInfo("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = ZoneInfo("Asia/Shanghai")
+                    else:
+                        tz = ZoneInfo("Asia/Shanghai")
+                    
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=tz)
+                except ImportError:
+                    # 如果 zoneinfo 不可用，使用 pytz
+                    import pytz
+                    if market_type == "US":
+                        tz = pytz.timezone("America/New_York")
+                    elif market_type == "HK":
+                        tz = pytz.timezone("Asia/Hong_Kong")
+                    elif market_type == "CN":
+                        tz = pytz.timezone("Asia/Shanghai")
+                    else:
+                        tz = pytz.timezone("Asia/Shanghai")
+                    
+                    end_dt = tz.localize(datetime.strptime(end_date, "%Y-%m-%d"))
+                
+                # 设置为当天的23:59:59
+                end_dt = end_dt + timedelta(days=1) - timedelta(seconds=1)
                 end_timestamp = int(end_dt.timestamp())
             except ValueError as e:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。错误: {str(e)}"
+                    detail=f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD。错误: {str(e)}"
                 )
-        
-        # 自动判断市场类型
-        market_type = futu_client._detect_market_type(symbol)
         
         # 搜索股票获取security_id
         stocks = await futu_client.search_stock(symbol, market_type)
@@ -678,12 +738,30 @@ async def get_kline(
             if not kline_list and "list" in kline_data:
                 kline_list = kline_data["list"]
         
+        print(f"[DEBUG] Raw kline_list length: {len(kline_list)}")
+        
         if not kline_list:
-            raise HTTPException(status_code=404, detail="无K线数据")
+            # 返回友好的错误信息，包含上游响应
+            error_detail = {
+                "error": "未获取到K线数据",
+                "symbol": symbol,
+                "interval": interval,
+                "market_type": market_type,
+                "message": "可能原因：1) 该股票在指定日期范围内没有交易数据 2) 股票代码不正确 3) 市场休市",
+                "upstream_response": kline_data
+            }
+            return error_detail
         
         # 先转换为DataFrame进行处理
         import pandas as pd
+        
+        if start_timestamp or end_timestamp:
+            from datetime import datetime
+            print(f"[DEBUG] Date filter - start_timestamp: {start_timestamp} ({datetime.fromtimestamp(start_timestamp) if start_timestamp else 'None'})")
+            print(f"[DEBUG] Date filter - end_timestamp: {end_timestamp} ({datetime.fromtimestamp(end_timestamp) if end_timestamp else 'None'})")
+        
         df_data = []
+        filtered_count = 0
         for item in kline_list:
             # 时间
             time_val = item.get("time") or item.get("k")
@@ -692,8 +770,10 @@ async def get_kline(
             
             # 如果指定了日期范围，过滤数据
             if start_timestamp and time_val < start_timestamp:
+                filtered_count += 1
                 continue
             if end_timestamp and time_val > end_timestamp:
+                filtered_count += 1
                 continue
             
             # 价格数据 - 收盘价
@@ -755,18 +835,60 @@ async def get_kline(
                 "volume": volume
             })
         
+        print(f"[DEBUG] Parsed df_data length: {len(df_data)}, filtered out: {filtered_count}")
+        if df_data:
+            from datetime import datetime
+            print(f"[DEBUG] First item: {df_data[0]}, time: {datetime.fromtimestamp(df_data[0]['time'])}")
+            print(f"[DEBUG] Last item: {df_data[-1]}, time: {datetime.fromtimestamp(df_data[-1]['time'])}")
+        
+        # 检查是否有有效数据
+        if not df_data:
+            error_detail = {
+                "error": "指定日期范围内没有有效的K线数据",
+                "symbol": symbol,
+                "interval": interval,
+                "market_type": market_type,
+                "date_range": {
+                    "start_date": start_date,
+                    "end_date": end_date
+                },
+                "message": "可能原因：1) 该日期范围内市场休市 2) 日期范围超出数据可用范围 3) 股票在该时间段未交易"
+            }
+            return error_detail
+        
         # 创建DataFrame
         df = pd.DataFrame(df_data)
         
         # 确保数据类型正确
-        df['open'] = df['open'].astype(float)
-        df['high'] = df['high'].astype(float)
-        df['low'] = df['low'].astype(float)
-        df['close'] = df['close'].astype(float)
-        df['volume'] = df['volume'].astype(int)
+        try:
+            df['open'] = df['open'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['close'] = df['close'].astype(float)
+            df['volume'] = df['volume'].astype(int)
+        except KeyError as e:
+            error_detail = {
+                "error": f"数据格式错误，缺少必需字段: {str(e)}",
+                "symbol": symbol,
+                "interval": interval,
+                "available_columns": list(df.columns) if len(df) > 0 else [],
+                "message": "上游API返回的数据格式不符合预期"
+            }
+            return error_detail
         
         # 过滤无效数据
         df = df[(df['close'] > 0) & (df['time'].notna())].copy()
+        
+        # 再次检查过滤后是否还有数据
+        if len(df) == 0:
+            error_detail = {
+                "error": "过滤后没有有效的K线数据",
+                "symbol": symbol,
+                "interval": interval,
+                "market_type": market_type,
+                "message": "所有数据点的价格都为0或时间戳无效"
+            }
+            return error_detail
         
         # 如果是周K及以下时间间隔且未指定日期范围，基于数据最新日期限制为最近1个月
         if apply_default_range and len(df) > 0:
@@ -783,8 +905,13 @@ async def get_kline(
         
         # 如果需要重采样（分钟级数据）
         if resample_interval:
+            print(f"[DEBUG] Before resample: {len(df)} rows, time range: {df['time'].min()} to {df['time'].max()}")
+            from datetime import datetime
+            print(f"[DEBUG] Time range (readable): {datetime.fromtimestamp(df['time'].min())} to {datetime.fromtimestamp(df['time'].max())}")
             from technical_indicators import resample_kline_data
             df = resample_kline_data(df, resample_interval)
+            print(f"[DEBUG] After resample: {len(df)} rows, time range: {df['time'].min()} to {df['time'].max()}")
+            print(f"[DEBUG] Time range (readable): {datetime.fromtimestamp(df['time'].min())} to {datetime.fromtimestamp(df['time'].max())}")
         
         # 格式化输出数据
         formatted_data = []

@@ -16,8 +16,15 @@ def resample_kline_data(df: pd.DataFrame, interval: str) -> pd.DataFrame:
     Returns:
         重采样后的DataFrame
     """
+    # 检查必需的列
+    required_cols = ['time', 'open', 'high', 'low', 'close', 'volume']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"DataFrame missing required columns: {missing_cols}")
+    
     # 确保有时间索引
     if 'time' in df.columns:
+        df = df.copy()  # 避免修改原始DataFrame
         df['datetime'] = pd.to_datetime(df['time'], unit='s')
         df = df.set_index('datetime')
     
@@ -43,8 +50,14 @@ def resample_kline_data(df: pd.DataFrame, interval: str) -> pd.DataFrame:
     resampled['close'] = df['close'].resample(rule).last()
     resampled['volume'] = df['volume'].resample(rule).sum()
     
-    # 删除空值行
-    resampled = resampled.dropna()
+    # 删除空值行（只删除所有价格都为NaN的行）
+    resampled = resampled.dropna(subset=['close'])
+    
+    # 填充可能的NaN值（用close价格填充）
+    resampled['open'] = resampled['open'].fillna(resampled['close'])
+    resampled['high'] = resampled['high'].fillna(resampled['close'])
+    resampled['low'] = resampled['low'].fillna(resampled['close'])
+    resampled['volume'] = resampled['volume'].fillna(0)
     
     # 重新添加 time 列（从索引转换回 Unix 时间戳）
     resampled['time'] = resampled.index.astype('int64') // 10**9
@@ -237,6 +250,17 @@ def calculate_single_indicator(df: pd.DataFrame, indicator: str, market_type: st
     
     if indicator not in SUPPORTED_INDICATORS:
         return {"error": f"Unsupported indicator: {indicator}"}
+    
+    # 检查必需的列（根据指标类型）
+    required_cols = ['time', 'close']
+    if indicator in ['atr', 'boll', 'boll_ub', 'boll_lb']:
+        required_cols.extend(['open', 'high', 'low'])
+    if indicator in ['vwma']:
+        required_cols.extend(['volume'])
+    
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        return {"error": f"DataFrame missing required columns: {missing_cols}"}
     
     # 判断是否只显示日期（日K及以上）
     date_only_intervals = ["daily", "weekly", "monthly", "quarterly", "yearly"]
