@@ -738,8 +738,6 @@ async def get_kline(
             if not kline_list and "list" in kline_data:
                 kline_list = kline_data["list"]
         
-        print(f"[DEBUG] Raw kline_list length: {len(kline_list)}")
-        
         if not kline_list:
             # 返回友好的错误信息，包含上游响应
             error_detail = {
@@ -754,11 +752,6 @@ async def get_kline(
         
         # 先转换为DataFrame进行处理
         import pandas as pd
-        
-        if start_timestamp or end_timestamp:
-            from datetime import datetime
-            print(f"[DEBUG] Date filter - start_timestamp: {start_timestamp} ({datetime.fromtimestamp(start_timestamp) if start_timestamp else 'None'})")
-            print(f"[DEBUG] Date filter - end_timestamp: {end_timestamp} ({datetime.fromtimestamp(end_timestamp) if end_timestamp else 'None'})")
         
         df_data = []
         filtered_count = 0
@@ -835,12 +828,6 @@ async def get_kline(
                 "volume": volume
             })
         
-        print(f"[DEBUG] Parsed df_data length: {len(df_data)}, filtered out: {filtered_count}")
-        if df_data:
-            from datetime import datetime
-            print(f"[DEBUG] First item: {df_data[0]}, time: {datetime.fromtimestamp(df_data[0]['time'])}")
-            print(f"[DEBUG] Last item: {df_data[-1]}, time: {datetime.fromtimestamp(df_data[-1]['time'])}")
-        
         # 检查是否有有效数据
         if not df_data:
             error_detail = {
@@ -905,13 +892,8 @@ async def get_kline(
         
         # 如果需要重采样（分钟级数据）
         if resample_interval:
-            print(f"[DEBUG] Before resample: {len(df)} rows, time range: {df['time'].min()} to {df['time'].max()}")
-            from datetime import datetime
-            print(f"[DEBUG] Time range (readable): {datetime.fromtimestamp(df['time'].min())} to {datetime.fromtimestamp(df['time'].max())}")
             from technical_indicators import resample_kline_data
             df = resample_kline_data(df, resample_interval)
-            print(f"[DEBUG] After resample: {len(df)} rows, time range: {df['time'].min()} to {df['time'].max()}")
-            print(f"[DEBUG] Time range (readable): {datetime.fromtimestamp(df['time'].min())} to {datetime.fromtimestamp(df['time'].max())}")
         
         # 格式化输出数据
         formatted_data = []
