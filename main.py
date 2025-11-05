@@ -214,7 +214,7 @@ async def get_quote(stock_code: str, authenticated: bool = Security(verify_api_k
     """
     获取指定股票行情（自动判断市场类型）
     
-    - **stock_code**: 股票代码，如 AAPL, 00700, 600519
+    - **stock_code**: 股票代码，如 AAPL, 00700, 00700.HK, 600519, 600519.SH
     
     返回股票的实时行情数据
     
@@ -222,15 +222,19 @@ async def get_quote(stock_code: str, authenticated: bool = Security(verify_api_k
     - 5位数字（如00700）→ 港股
     - 6位数字（如600519）→ A股
     - 包含字母（如AAPL）→ 美股
+    - 支持带后缀格式（如 00700.HK, 600519.SH）
     
     **注意**: 返回的字段中，open_price、high_price、low_price、volume 只在有值时才会出现
     """
     try:
+        # 标准化股票代码（去除后缀）
+        normalized_code = futu_client._normalize_stock_code(stock_code)
+        
         # 自动判断市场类型
-        market_type = futu_client._detect_market_type(stock_code)
+        market_type = futu_client._detect_market_type(normalized_code)
         
         # 搜索股票获取security_id
-        stocks = await futu_client.search_stock(stock_code, market_type)
+        stocks = await futu_client.search_stock(normalized_code, market_type)
         if not stocks:
             raise HTTPException(status_code=404, detail=f"未找到股票: {stock_code}")
         
@@ -249,10 +253,10 @@ async def trade(trade_request: TradeRequest, authenticated: bool = Security(veri
     交易接口（买入/卖出）- 使用JSON body传递参数
     
     请求体参数：
-    - **stock_code**: 股票代码（必填，自动判断市场类型）
+    - **stock_code**: 股票代码（必填，自动判断市场类型，支持带后缀格式）
       - 美股: AAPL, TSLA, NVDA
-      - 港股: 00700, 09988
-      - A股: 600519, 000001
+      - 港股: 00700, 09988, 00700.HK
+      - A股: 600519, 000001, 600519.SH
     - **side**: 交易方向（必填，BUY=买入, SELL=卖出）
     - **quantity**: 数量（必填）
     - **price**: 价格（限价单必填，市价单可选）
@@ -299,11 +303,11 @@ async def cancel(request: CancelOrderRequest, authenticated: bool = Security(ver
     
     请求体参数：
     - **order_id**: 订单ID（必填）
-    - **stock_code**: 股票代码（必填，用于自动判断市场类型）
+    - **stock_code**: 股票代码（必填，用于自动判断市场类型，支持带后缀格式）
     
     **自动判断规则**：
-    - 5位数字（如00700）→ 港股
-    - 6位数字（如600519）→ A股
+    - 5位数字（如00700, 00700.HK）→ 港股
+    - 6位数字（如600519, 600519.SH）→ A股
     - 包含字母（如AAPL）→ 美股
     
     **示例**:
@@ -413,7 +417,7 @@ async def get_technical_analysis(
     """
     获取技术分析指标（返回时间序列数据，自动判断市场类型）
     
-    - **symbol**: 股票代码（必填）
+    - **symbol**: 股票代码（必填，支持带后缀格式如 00700.HK, 600519.SH）
     - **interval**: 时间间隔（可选，默认daily）
       - 分钟级: 1min, 5min, 15min, 30min, 60min
       - 日线及以上: daily, weekly, monthly, quarterly, yearly
@@ -522,7 +526,7 @@ async def get_kline(
     """
     获取K线数据（自动判断市场类型）
     
-    - **symbol**: 股票代码（必填）
+    - **symbol**: 股票代码（必填，支持带后缀格式如 00700.HK, 600519.SH）
     - **interval**: 时间间隔（可选，默认daily）
       - 分钟级: 1min, 5min, 15min, 30min, 60min
       - 日线及以上: daily, weekly, monthly, quarterly, yearly
@@ -610,8 +614,9 @@ async def get_kline(
         short_intervals = ["weekly", "daily", "60min", "30min", "15min", "5min", "1min"]
         apply_default_range = interval in short_intervals and not start_date and not end_date
         
-        # 自动判断市场类型（需要在日期解析之前，因为日期解析需要知道时区）
-        market_type = futu_client._detect_market_type(symbol)
+        # 标准化股票代码（去除后缀）并自动判断市场类型（需要在日期解析之前，因为日期解析需要知道时区）
+        normalized_symbol = futu_client._normalize_stock_code(symbol)
+        market_type = futu_client._detect_market_type(normalized_symbol)
         
         # 解析日期范围（如果提供）
         start_timestamp = None
@@ -713,8 +718,8 @@ async def get_kline(
                     detail=f"无效的结束日期格式: {end_date}，请使用 YYYY-MM-DD。错误: {str(e)}"
                 )
         
-        # 搜索股票获取security_id
-        stocks = await futu_client.search_stock(symbol, market_type)
+        # 搜索股票获取security_id（使用标准化的代码）
+        stocks = await futu_client.search_stock(normalized_symbol, market_type)
         if not stocks:
             raise HTTPException(status_code=404, detail=f"未找到股票: {symbol}")
         

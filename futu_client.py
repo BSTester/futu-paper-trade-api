@@ -47,6 +47,25 @@ class FutuClient:
         # 使用环境变量配置的账户映射
         self._account_mapping = ACCOUNT_MAPPING
     
+    def _normalize_stock_code(self, stock_code: str) -> str:
+        """
+        标准化股票代码，去除市场后缀（用于请求富途接口）
+        
+        Args:
+            stock_code: 原始股票代码（可能包含后缀，如 00700.HK, 600519.SH）
+            
+        Returns:
+            纯数字或字母的股票代码（如 00700, 600519, AAPL）
+        """
+        stock_code = stock_code.upper().strip()
+        
+        # 如果包含点号，去除后缀
+        if '.' in stock_code:
+            code_part, _ = stock_code.split('.', 1)
+            return code_part
+        
+        return stock_code
+    
     def _detect_market_type(self, stock_code: str) -> str:
         """
         根据股票代码自动判断市场类型（更严谨的判断逻辑）
@@ -388,6 +407,9 @@ class FutuClient:
         Returns:
             股票搜索结果列表
         """
+        # 标准化股票代码（去除后缀，如 00700.HK -> 00700）
+        normalized_keyword = self._normalize_stock_code(keyword)
+        
         # 根据市场类型设置不同的 supported_securities 参数
         if market_type == "CN":
             # A股：只支持ETF
@@ -401,7 +423,7 @@ class FutuClient:
         
         url = f"{FUTU_MATCH_URL}/trade/search-target-stock"
         params = {
-            "key": keyword,
+            "key": normalized_keyword,
             "market_type": MARKET_TYPE.get(market_type, 100) if market_type else 100,
             "supported_securities": supported_securities
         }
@@ -521,9 +543,10 @@ class FutuClient:
                 message=f"未找到{market_type}市场的模拟账户，请先在富途牛牛中开通该市场的模拟交易账户"
             )
         
-        # 3. 搜索股票获取security_id
+        # 3. 搜索股票获取security_id（使用标准化的股票代码）
+        normalized_code = self._normalize_stock_code(trade_request.stock_code)
         stocks = await self.search_stock(
-            trade_request.stock_code, 
+            normalized_code, 
             market_type
         )
         
@@ -663,8 +686,9 @@ class FutuClient:
         Returns:
             TradeResponse: 撤单响应对象
         """
-        # 自动判断市场类型
-        market_type = self._detect_market_type(stock_code)
+        # 标准化股票代码并自动判断市场类型
+        normalized_code = self._normalize_stock_code(stock_code)
+        market_type = self._detect_market_type(normalized_code)
         
         # 根据市场类型获取账户ID
         account_id = self.get_account_id_by_market(market_type)
@@ -1065,11 +1089,12 @@ class FutuClient:
         short_intervals = ["weekly", "daily", "60min", "30min", "15min", "5min", "1min"]
         apply_default_range = interval in short_intervals and not start_date and not end_date
         
-        # 自动判断市场类型
-        market_type = self._detect_market_type(symbol)
+        # 标准化股票代码并自动判断市场类型
+        normalized_symbol = self._normalize_stock_code(symbol)
+        market_type = self._detect_market_type(normalized_symbol)
         
-        # 搜索股票获取security_id
-        stocks = await self.search_stock(symbol, market_type)
+        # 搜索股票获取security_id（使用标准化的代码）
+        stocks = await self.search_stock(normalized_symbol, market_type)
         if not stocks:
             return {
                 "error": f"未找到股票: {symbol}",
