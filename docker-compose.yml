@@ -6,6 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: futu-paper-trade-api
+    image: futu-paper-trade-api
     ports:
       - "8000:8000"
     
