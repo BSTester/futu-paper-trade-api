@@ -329,11 +329,20 @@ class FutuClient:
                 return {"error": f"未找到{market_type}市场的模拟账户，请在.env文件中配置ACCOUNT_ID_{market_type}", "code": 404, "positions": []}
         
         url = f"{FUTU_BASE_URL}/paper-trade/common-api"
+        
+        # 根据市场类型选择不同的接口
+        # 美股使用 getIntegratedPosList，港股和A股使用 getPosList
+        if market_type == "US":
+            api_method = "getIntegratedPosList"
+        else:
+            # HK 或 CN 市场
+            api_method = "getPosList"
+        
         params = {
-            "_m": "getIntegratedPosList",
+            "_m": api_method,
             "account_id": account_id
         }
-        data = await self._request("GET", url, api_method="getIntegratedPosList", params=params)
+        data = await self._request("GET", url, api_method=api_method, params=params)
         
         # 检查是否未登录
         if isinstance(data, dict) and data.get("code") == 1002:
@@ -346,53 +355,79 @@ class FutuClient:
             }
         
         # 处理响应数据
-        # 富途API返回格式: {"code":0,"message":"成功","data":{"positions":[{"positions":[...]}],"pos_count":"1"}}
-        # 注意：data.positions 是一个数组，每个元素包含一个 positions 数组
         positions_data = data.get("data", {})
         if not isinstance(positions_data, dict):
             return {"positions": [], "count": 0}
         
-        # 获取外层positions数组
-        outer_positions = positions_data.get("positions", [])
-        
-        # 提取所有持仓数据（从嵌套结构中）
-        all_positions = []
-        for outer_pos in outer_positions:
-            if isinstance(outer_pos, dict) and "positions" in outer_pos:
-                inner_positions = outer_pos.get("positions", [])
-                all_positions.extend(inner_positions)
-        
         # 格式化持仓数据
         positions = []
-        for pos in all_positions:
-            # 富途API字段映射
-            # security_id: security_id
-            # stock_code: stock_code / futu_symbol
-            # stock_name: stock_name
-            # market_type: market_type_code (US/HK/CN)
-            # quantity: quantity (字符串格式)
-            # available_quantity: 可用数量（通常等于quantity）
-            # cost_price: cost_price
-            # current_price: price
-            # market_value: market_value
-            # profit_loss: profit
-            # profit_loss_ratio: profit_ratio (小数格式，如-0.02496)
+        
+        if market_type == "US":
+            # 美股接口返回格式: {"code":0,"message":"成功","data":{"positions":[{"positions":[...]}],"pos_count":"1"}}
+            # 注意：data.positions 是一个数组，每个元素包含一个 positions 数组
+            outer_positions = positions_data.get("positions", [])
             
-            quantity = int(pos.get("quantity", 0))
+            # 提取所有持仓数据（从嵌套结构中）
+            all_positions = []
+            for outer_pos in outer_positions:
+                if isinstance(outer_pos, dict) and "positions" in outer_pos:
+                    inner_positions = outer_pos.get("positions", [])
+                    all_positions.extend(inner_positions)
             
-            positions.append({
-                "security_id": str(pos.get("security_id", "")),
-                "stock_code": pos.get("stock_code") or pos.get("futu_symbol", ""),
-                "stock_name": pos.get("stock_name", ""),
-                "market_type": pos.get("market_type_code", ""),
-                "quantity": quantity,
-                "available_quantity": quantity,  # 通常可用数量等于持仓数量
-                "cost_price": float(pos.get("cost_price", 0)),
-                "current_price": float(pos.get("price", 0)),
-                "market_value": float(pos.get("market_value", 0)),
-                "profit_loss": float(pos.get("profit", 0)),
-                "profit_loss_ratio": float(pos.get("profit_ratio", 0))
-            })
+            # 格式化持仓数据
+            for pos in all_positions:
+                quantity = int(pos.get("quantity", 0))
+                
+                positions.append({
+                    "security_id": str(pos.get("security_id", "")),
+                    "stock_code": pos.get("stock_code") or pos.get("futu_symbol", ""),
+                    "stock_name": pos.get("stock_name", ""),
+                    "market_type": pos.get("market_type_code", ""),
+                    "quantity": quantity,
+                    "available_quantity": quantity,  # 通常可用数量等于持仓数量
+                    "cost_price": float(pos.get("cost_price", 0)),
+                    "current_price": float(pos.get("price", 0)),
+                    "market_value": float(pos.get("market_value", 0)),
+                    "profit_loss": float(pos.get("profit", 0)),
+                    "profit_loss_ratio": float(pos.get("profit_ratio", 0))
+                })
+        else:
+            # 港股/A股接口返回格式: {"code":0,"message":"成功","data":{"positions":[...],"pos_count":"1"}}
+            # positions直接是持仓数组
+            all_positions = positions_data.get("positions", [])
+            
+            for pos in all_positions:
+                # 港股/A股字段映射
+                # quantity: 持仓数量（可能是字符串或整数）
+                # power: 可用数量
+                # cost_price: 成本价
+                # price: 当前价格
+                # market_value: 市值
+                # profit: 盈亏金额
+                # profit_ratio: 盈亏比例
+                # stock_code: 股票代码（如 601088.SH）
+                # stock_name: 股票名称
+                # market_type_code: 市场类型代码
+                
+                quantity_str = pos.get("quantity", "0")
+                quantity = int(quantity_str) if isinstance(quantity_str, str) else int(quantity_str or 0)
+                
+                power_str = pos.get("power", "0")
+                available_quantity = int(power_str) if isinstance(power_str, str) else int(power_str or 0)
+                
+                positions.append({
+                    "security_id": str(pos.get("security_id", "")),
+                    "stock_code": pos.get("stock_code", ""),
+                    "stock_name": pos.get("stock_name", ""),
+                    "market_type": pos.get("market_type_code", ""),
+                    "quantity": quantity,
+                    "available_quantity": available_quantity,
+                    "cost_price": float(pos.get("cost_price", 0)),
+                    "current_price": float(pos.get("price", 0)),
+                    "market_value": float(pos.get("market_value", 0)),
+                    "profit_loss": float(pos.get("profit", 0)),
+                    "profit_loss_ratio": float(pos.get("profit_ratio", 0))
+                })
         
         return {"positions": positions, "count": len(positions)}
     
