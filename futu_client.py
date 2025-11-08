@@ -389,7 +389,8 @@ class FutuClient:
                     "current_price": float(pos.get("price", 0)),
                     "market_value": float(pos.get("market_value", 0)),
                     "profit_loss": float(pos.get("profit", 0)),
-                    "profit_loss_ratio": float(pos.get("profit_ratio", 0))
+                    "profit_loss_ratio": float(pos.get("profit_ratio", 0)),
+                    "pos_rate": float(pos.get("pos_rate", 0))  # 持仓占比
                 })
         else:
             # 港股/A股接口返回格式: {"code":0,"message":"成功","data":{"positions":[...],"pos_count":"1"}}
@@ -405,6 +406,7 @@ class FutuClient:
                 # market_value: 市值
                 # profit: 盈亏金额
                 # profit_ratio: 盈亏比例
+                # pos_rate: 持仓占比
                 # stock_code: 股票代码（如 601088.SH）
                 # stock_name: 股票名称
                 # market_type_code: 市场类型代码
@@ -426,7 +428,8 @@ class FutuClient:
                     "current_price": float(pos.get("price", 0)),
                     "market_value": float(pos.get("market_value", 0)),
                     "profit_loss": float(pos.get("profit", 0)),
-                    "profit_loss_ratio": float(pos.get("profit_ratio", 0))
+                    "profit_loss_ratio": float(pos.get("profit_ratio", 0)),
+                    "pos_rate": float(pos.get("pos_rate", 0))  # 持仓占比
                 })
         
         return {"positions": positions, "count": len(positions)}
