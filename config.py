@@ -6,6 +6,7 @@ load_dotenv()
 
 # 富途API配置
 FUTU_COOKIE = os.getenv("FUTU_COOKIE", "")
+FUTU_CSRF_TOKEN = os.getenv("FUTU_CSRF_TOKEN", "+6J+BiZiThIfvbfSkt9BiRnQvW4=")
 
 # 账户配置（按市场类型）
 ACCOUNT_ID_HK = os.getenv("ACCOUNT_ID_HK", "")  # 港股账户

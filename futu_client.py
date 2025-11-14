@@ -3,7 +3,7 @@ import httpx
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from config import (
-    FUTU_COOKIE, FUTU_BASE_URL, FUTU_MATCH_URL,
+    FUTU_COOKIE, FUTU_CSRF_TOKEN, FUTU_BASE_URL, FUTU_MATCH_URL,
     MARKET_TYPE, ORDER_SIDE, ORDER_TYPE, PERIOD_TYPE, SECURITY_TYPE,
     ACCOUNT_MAPPING
 )
@@ -17,8 +17,9 @@ from technical_indicators import calculate_indicators_series, SUPPORTED_INDICATO
 class FutuClient:
     """富途API客户端"""
     
-    def __init__(self, cookie: str = None):
+    def __init__(self, cookie: str = None, csrf_token: str = None):
         self.cookie = cookie or FUTU_COOKIE
+        self.csrf_token = csrf_token or FUTU_CSRF_TOKEN
         # 使用从浏览器捕获的完整请求头（基础请求头）
         self.base_headers = {
             "Accept": "application/json, text/plain, */*",
@@ -42,7 +43,7 @@ class FutuClient:
             # 富途API必需的固定请求头
             "x-paper-trading-location": "CN",
             "x-futu-client-lang": "0",
-            "futu-x-csrf-token": "+6J+BiZiThIfvbfSkt9BiRnQvW4="
+            "futu-x-csrf-token": self.csrf_token
         }
         # 使用环境变量配置的账户映射
         self._account_mapping = ACCOUNT_MAPPING
