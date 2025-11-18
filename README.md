@@ -17,6 +17,7 @@ pip install -r requirements.txt
 ```bash
 # 富途Cookie（必填）
 FUTU_COOKIE=your_cookie_here
+FUTU_CSRF_TOKEN=your_csrf_token_here
 
 # API Key（可选，用于接口鉴权）
 API_KEY=your_secure_api_key_here
