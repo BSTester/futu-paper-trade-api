@@ -123,9 +123,12 @@
             <div>
                 <span class="feature">🌍 多市场支持</span>
                 <span class="feature">📊 实时行情</span>
+                <span class="feature">📈 K线数据</span>
+                <span class="feature">🔧 技术指标</span>
                 <span class="feature">💰 模拟交易</span>
-                <span class="feature">📈 持仓管理</span>
+                <span class="feature">📋 持仓管理</span>
                 <span class="feature">🔄 订单管理</span>
+                <span class="feature">📰 热门资讯</span>
             </div>
             
             <h3>🎯 支持的市场</h3>
@@ -139,87 +142,161 @@
         <div class="card">
             <h2>🔌 核心接口</h2>
             
+            <h3>账户相关</h3>
             <div class="endpoint">
                 <span class="method get">GET</span>
-                <strong>/api/accounts</strong>
-                <p>获取账户列表</p>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method get">GET</span>
-                <strong>/api/account/info</strong>
-                <p>获取账户详情（资产、余额、盈亏等）</p>
+                <strong>/api/account</strong>
+                <p>获取账户信息（资产、余额、盈亏等）</p>
+                <code>参数: market_type (US/HK/CN)</code>
             </div>
             
             <div class="endpoint">
                 <span class="method get">GET</span>
                 <strong>/api/positions</strong>
                 <p>获取持仓列表</p>
+                <code>参数: market_type (US/HK/CN)</code>
             </div>
             
+            <h3>行情相关</h3>
             <div class="endpoint">
-                <span class="method post">POST</span>
-                <strong>/api/stock/search</strong>
-                <p>搜索股票</p>
+                <span class="method get">GET</span>
+                <strong>/api/quote</strong>
+                <p>获取股票行情（自动判断市场类型）</p>
+                <code>参数: stock_code (如 AAPL, 00700, 600519)</code>
             </div>
             
             <div class="endpoint">
                 <span class="method get">GET</span>
-                <strong>/api/stock/quote</strong>
-                <p>获取股票行情</p>
+                <strong>/api/kline</strong>
+                <p>获取K线数据（支持多种时间间隔）</p>
+                <code>参数: symbol, interval (1min/5min/daily/weekly等), start_date, end_date, format (json/csv)</code>
             </div>
             
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/technical-analysis</strong>
+                <p>获取技术分析指标（MACD、RSI、BOLL等）</p>
+                <code>参数: symbol, interval, indicator, start_date, end_date, format (json/csv)</code>
+            </div>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/hot-stocks</strong>
+                <p>获取热门股票列表</p>
+                <code>参数: market_type (US/HK/CN), count</code>
+            </div>
+            
+            <h3>交易相关</h3>
             <div class="endpoint">
                 <span class="method post">POST</span>
                 <strong>/api/trade</strong>
                 <p>下单交易（买入/卖出）</p>
+                <code>Body: stock_code, side (BUY/SELL), quantity, price, order_type (LIMIT/MARKET)</code>
             </div>
             
             <div class="endpoint">
                 <span class="method post">POST</span>
-                <strong>/api/trade/buy</strong>
-                <p>快速买入</p>
+                <strong>/api/cancel</strong>
+                <p>撤销订单</p>
+                <code>Body: order_id, stock_code</code>
             </div>
             
             <div class="endpoint">
-                <span class="method post">POST</span>
-                <strong>/api/trade/sell</strong>
-                <p>快速卖出</p>
+                <span class="method get">GET</span>
+                <strong>/api/orders</strong>
+                <p>查询订单历史</p>
+                <code>参数: market_type (US/HK/CN), filter_status (0=全部/1=已成交/2=等待成交/3=已撤单)</code>
+            </div>
+            
+            <h3>资讯相关</h3>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <strong>/api/hot-news</strong>
+                <p>获取热门新闻</p>
+                <code>参数: lang (zh-cn/zh-hk/en-us)</code>
             </div>
         </div>
         
         <div class="card">
             <h2>📝 使用示例</h2>
             
-            <h3>买入股票</h3>
+            <h3>1. 获取账户信息</h3>
             <pre>
-POST /api/trade/buy
+GET /api/account?market_type=US</pre>
+            
+            <h3>2. 查询持仓</h3>
+            <pre>
+GET /api/positions?market_type=US</pre>
+            
+            <h3>3. 获取股票行情</h3>
+            <pre>
+GET /api/quote?stock_code=AAPL</pre>
+            
+            <h3>4. 获取K线数据</h3>
+            <pre>
+# 获取日K线
+GET /api/kline?symbol=AAPL&interval=daily
+
+# 获取5分钟K线（指定日期范围）
+GET /api/kline?symbol=AAPL&interval=5min&start_date=2025-11-01&end_date=2025-11-01
+
+# 获取CSV格式数据
+GET /api/kline?symbol=AAPL&interval=daily&format=csv</pre>
+            
+            <h3>5. 获取技术指标</h3>
+            <pre>
+# 获取MACD指标
+GET /api/technical-analysis?symbol=AAPL&indicator=macd
+
+# 获取RSI指标（5分钟）
+GET /api/technical-analysis?symbol=AAPL&interval=5min&indicator=rsi
+
+# 获取布林带（指定日期范围）
+GET /api/technical-analysis?symbol=AAPL&indicator=boll&start_date=2025-10-01&end_date=2025-10-31</pre>
+            
+            <h3>6. 买入股票</h3>
+            <pre>
+POST /api/trade
 Content-Type: application/json
 
 {
   "stock_code": "AAPL",
-  "market_type": "US",
+  "side": "BUY",
   "quantity": 10,
   "price": 180.0,
   "order_type": "LIMIT"
 }</pre>
             
-            <h3>卖出股票</h3>
+            <h3>7. 卖出股票</h3>
             <pre>
-POST /api/trade/sell
+POST /api/trade
 Content-Type: application/json
 
 {
   "stock_code": "AAPL",
-  "market_type": "US",
+  "side": "SELL",
   "quantity": 10,
   "price": 185.0,
   "order_type": "LIMIT"
 }</pre>
             
-            <h3>查询持仓</h3>
+            <h3>8. 查询订单</h3>
             <pre>
-GET /api/positions?market_type=US</pre>
+# 查询所有订单
+GET /api/orders?market_type=US
+
+# 查询已成交订单
+GET /api/orders?market_type=US&filter_status=1</pre>
+            
+            <h3>9. 撤销订单</h3>
+            <pre>
+POST /api/cancel
+Content-Type: application/json
+
+{
+  "order_id": "123456789",
+  "stock_code": "AAPL"
+}</pre>
         </div>
         
         <div class="card">
@@ -232,12 +309,52 @@ GET /api/positions?market_type=US</pre>
         </div>
         
         <div class="card">
+            <h2>📊 技术指标说明</h2>
+            <p>支持的技术指标包括：</p>
+            <ul>
+                <li><strong>MACD</strong> - 平滑异同移动平均线（返回 MACD, Signal, Histogram）</li>
+                <li><strong>RSI</strong> - 相对强弱指标</li>
+                <li><strong>BOLL</strong> - 布林带（返回 Upper, Middle, Lower）</li>
+                <li><strong>SMA</strong> - 简单移动平均线（50日、200日）</li>
+                <li><strong>EMA</strong> - 指数移动平均线（10日）</li>
+                <li><strong>ATR</strong> - 平均真实波幅</li>
+                <li><strong>VWMA</strong> - 成交量加权移动平均线</li>
+            </ul>
+            <p><strong>支持的时间间隔：</strong></p>
+            <ul>
+                <li>分钟级：1min, 5min, 15min, 30min, 60min</li>
+                <li>日线及以上：daily, weekly, monthly, quarterly, yearly</li>
+            </ul>
+            <p><strong>数据格式：</strong></p>
+            <ul>
+                <li>JSON格式：适合程序处理</li>
+                <li>CSV格式：适合导入Excel或数据分析工具</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>🔐 API 鉴权</h2>
+            <p>如果服务配置了 API Key，需要在请求头中添加：</p>
+            <pre>
+X-API-Key: your_api_key_here</pre>
+            <p>无需鉴权的接口：</p>
+            <ul>
+                <li><code>/</code> - 根路径</li>
+                <li><code>/health</code> - 健康检查</li>
+                <li><code>/docs</code> - Swagger UI</li>
+                <li><code>/api-docs</code> - 本文档页面</li>
+            </ul>
+        </div>
+        
+        <div class="card">
             <h2>⚠️ 注意事项</h2>
             <ul>
-                <li>本服务仅用于模拟交易，不涉及真实资金</li>
-                <li>Cookie 会过期，需要定期更新</li>
-                <li>注意各市场的交易时间</li>
-                <li>不同市场有不同的最小交易单位</li>
+                <li><strong>模拟交易</strong>：本服务仅用于模拟交易，不涉及真实资金</li>
+                <li><strong>Cookie 过期</strong>：Cookie 会定期过期，需要从富途牛牛Web端重新获取</li>
+                <li><strong>交易时间</strong>：注意各市场的交易时间，非交易时间可能无法获取实时数据</li>
+                <li><strong>交易单位</strong>：不同市场有不同的最小交易单位（美股1股，港股100股，A股100股）</li>
+                <li><strong>股票代码格式</strong>：支持多种格式（AAPL, 00700, 00700.HK, 600519, 600519.SH）</li>
+                <li><strong>市场自动判断</strong>：大部分接口会根据股票代码自动判断市场类型</li>
             </ul>
         </div>
     </div>

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: futu-trading-api
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FUTU_COOKIE
+        sync: false
+      - key: FUTU_CSRF_TOKEN
+        sync: false
+      - key: ACCOUNT_ID_HK
+        sync: false
+      - key: ACCOUNT_ID_US
+        sync: false
+      - key: ACCOUNT_ID_CN
+        sync: false
+      - key: ACCOUNT_ID_US_COMPETITION
+        sync: false
+      - key: API_KEY
+        generateValue: true
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 8000
+      - key: PYTHON_VERSION
+        value: 3.11.0
