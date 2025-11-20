@@ -110,6 +110,7 @@ def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = 'close') -> 
     """计算相对强弱指标 (RSI)
     
     使用Wilder's Smoothing方法（标准RSI计算方法）
+    优化版本：使用ewm代替循环，性能更好
     
     Args:
         df: 包含价格数据的DataFrame
@@ -127,16 +128,11 @@ def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = 'close') -> 
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
     
-    # 第一个值使用SMA
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
-    
-    # 后续值使用Wilder's Smoothing
-    # Wilder's Smoothing: new_avg = (prev_avg * (period - 1) + current_value) / period
-    # 这等价于 EMA with alpha = 1/period
-    for i in range(period, len(df)):
-        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
-        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+    # 使用ewm实现Wilder's Smoothing
+    # Wilder's Smoothing等价于 EMA with alpha = 1/period
+    # ewm的alpha参数 = 1/period
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
     
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
@@ -203,10 +199,10 @@ SUPPORTED_INDICATORS = {
     "macd": ("MACD", "close"),
     "macds": ("MACD Signal", "close"),
     "macdh": ("MACD Histogram", "close"),
-    "rsi": ("RSI(14)", "close"),
-    "rsi_6": ("RSI(6)", "close"),
-    "rsi_12": ("RSI(12)", "close"),
-    "rsi_24": ("RSI(24)", "close"),
+    "rsi": ("RSI", "close"),
+    "rsi_6": ("RSI", "close"),
+    "rsi_12": ("RSI", "close"),
+    "rsi_24": ("RSI", "close"),
     "boll": ("Bollinger Middle", "close"),
     "boll_ub": ("Bollinger Upper Band", "close"),
     "boll_lb": ("Bollinger Lower Band", "close"),
@@ -317,33 +313,72 @@ def calculate_single_indicator(df: pd.DataFrame, indicator: str, market_type: st
         # macds 和 macdh 也映射到 macd
         if indicator in ["macd", "macds", "macdh"]:
             macd_data = calculate_macd(df)
-            results = {}
             
-            for i in range(len(df)):
-                time_val = df.iloc[i]['time']
-                if pd.isna(time_val):
-                    continue
-                
-                timestamp = int(time_val)
-                # 使用当地时间作为键，根据间隔决定格式
-                if use_date_only:
-                    # 日K及以上只显示日期
-                    date_str = format_timestamp(timestamp, date_only=True)
-                else:
-                    # 分钟级显示完整时间
-                    date_str = time_converter(timestamp, market_type)
-                
-                macd_val = macd_data['macd'].iloc[i]
-                signal_val = macd_data['signal'].iloc[i]
-                hist_val = macd_data['histogram'].iloc[i]
-                
-                # 只添加有效数据
-                if not pd.isna(macd_val) and not pd.isna(signal_val) and not pd.isna(hist_val):
-                    results[date_str] = {
-                        "MACD": f"{float(macd_val):.4f}",
-                        "MACD_Signal": f"{float(signal_val):.4f}",
-                        "MACD_Hist": f"{float(hist_val):.4f}"
-                    }
+            # 创建临时DataFrame用于向量化处理
+            temp_df = pd.DataFrame({
+                'time': df['time'],
+                'macd': macd_data['macd'],
+                'signal': macd_data['signal'],
+                'histogram': macd_data['histogram']
+            })
+            
+            # 过滤掉无效数据
+            temp_df = temp_df.dropna()
+            
+            # 向量化生成日期字符串
+            if use_date_only:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: format_timestamp(int(x), date_only=True))
+            else:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: time_converter(int(x), market_type))
+            
+            # 向量化格式化数值
+            results = {}
+            for _, row in temp_df.iterrows():
+                results[row['date_str']] = {
+                    "MACD": f"{float(row['macd']):.4f}",
+                    "MACD_Signal": f"{float(row['signal']):.4f}",
+                    "MACD_Hist": f"{float(row['histogram']):.4f}"
+                }
+            
+            return results
+        
+        # 特殊处理 RSI（返回四个周期的值）
+        # rsi_6, rsi_12, rsi_24 也映射到 rsi
+        elif indicator in ["rsi", "rsi_6", "rsi_12", "rsi_24"]:
+            periods = [6, 12, 14, 24]
+            rsi_results = {}
+            
+            # 串行计算各周期的RSI
+            for period in periods:
+                rsi_results[period] = calculate_rsi(df, period)
+            
+            # 创建临时DataFrame用于向量化处理
+            temp_df = pd.DataFrame({
+                'time': df['time'],
+                'rsi6': rsi_results[6],
+                'rsi12': rsi_results[12],
+                'rsi14': rsi_results[14],
+                'rsi24': rsi_results[24]
+            })
+            
+            # 过滤掉无效数据
+            temp_df = temp_df.dropna()
+            
+            # 向量化生成日期字符串
+            if use_date_only:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: format_timestamp(int(x), date_only=True))
+            else:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: time_converter(int(x), market_type))
+            
+            # 向量化格式化数值
+            results = {}
+            for _, row in temp_df.iterrows():
+                results[row['date_str']] = {
+                    "RSI(6)": f"{float(row['rsi6']):.2f}",
+                    "RSI(12)": f"{float(row['rsi12']):.2f}",
+                    "RSI(14)": f"{float(row['rsi14']):.2f}",
+                    "RSI(24)": f"{float(row['rsi24']):.2f}"
+                }
             
             return results
         
@@ -351,55 +386,61 @@ def calculate_single_indicator(df: pd.DataFrame, indicator: str, market_type: st
         # boll_ub 和 boll_lb 也映射到 boll
         elif indicator in ["boll", "boll_ub", "boll_lb"]:
             boll_data = calculate_bollinger_bands(df)
-            results = {}
             
-            for i in range(len(df)):
-                time_val = df.iloc[i]['time']
-                if pd.isna(time_val):
-                    continue
-                
-                timestamp = int(time_val)
-                if use_date_only:
-                    date_str = format_timestamp(timestamp, date_only=True)
-                else:
-                    date_str = time_converter(timestamp, market_type)
-                
-                upper_val = boll_data['upper'].iloc[i]
-                middle_val = boll_data['middle'].iloc[i]
-                lower_val = boll_data['lower'].iloc[i]
-                
-                if not pd.isna(upper_val) and not pd.isna(middle_val) and not pd.isna(lower_val):
-                    results[date_str] = {
-                        "Boll_Upper": f"{float(upper_val):.4f}",
-                        "Boll_Middle": f"{float(middle_val):.4f}",
-                        "Boll_Lower": f"{float(lower_val):.4f}"
-                    }
+            # 创建临时DataFrame用于向量化处理
+            temp_df = pd.DataFrame({
+                'time': df['time'],
+                'upper': boll_data['upper'],
+                'middle': boll_data['middle'],
+                'lower': boll_data['lower']
+            })
+            
+            # 过滤掉无效数据
+            temp_df = temp_df.dropna()
+            
+            # 向量化生成日期字符串
+            if use_date_only:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: format_timestamp(int(x), date_only=True))
+            else:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: time_converter(int(x), market_type))
+            
+            # 向量化格式化数值
+            results = {}
+            for _, row in temp_df.iterrows():
+                results[row['date_str']] = {
+                    "Boll_Upper": f"{float(row['upper']):.4f}",
+                    "Boll_Middle": f"{float(row['middle']):.4f}",
+                    "Boll_Lower": f"{float(row['lower']):.4f}"
+                }
             
             return results
         
         # 其他单值指标
         else:
             values = calc_func(df)
-            results = {}
             indicator_name = SUPPORTED_INDICATORS[indicator][0]
             
-            for i in range(len(df)):
-                time_val = df.iloc[i]['time']
-                if pd.isna(time_val):
-                    continue
-                
-                timestamp = int(time_val)
-                if use_date_only:
-                    date_str = format_timestamp(timestamp, date_only=True)
-                else:
-                    date_str = time_converter(timestamp, market_type)
-                
-                if i < len(values):
-                    val = values.iloc[i]
-                    if not pd.isna(val):
-                        results[date_str] = {
-                            indicator_name: f"{float(val):.4f}"
-                        }
+            # 创建临时DataFrame用于向量化处理
+            temp_df = pd.DataFrame({
+                'time': df['time'],
+                'value': values
+            })
+            
+            # 过滤掉无效数据
+            temp_df = temp_df.dropna()
+            
+            # 向量化生成日期字符串
+            if use_date_only:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: format_timestamp(int(x), date_only=True))
+            else:
+                temp_df['date_str'] = temp_df['time'].apply(lambda x: time_converter(int(x), market_type))
+            
+            # 向量化格式化数值
+            results = {}
+            for _, row in temp_df.iterrows():
+                results[row['date_str']] = {
+                    indicator_name: f"{float(row['value']):.4f}"
+                }
             
             return results
             

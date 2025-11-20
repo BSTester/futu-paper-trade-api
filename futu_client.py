@@ -1109,9 +1109,8 @@ class FutuClient:
                 - 日线及以上: daily, weekly, monthly, quarterly, yearly
             indicator: 要计算的指标（每次只返回一个指标）
                 可选指标：close_50_sma, close_200_sma, close_10_ema, macd,
-                         rsi, rsi_6, rsi_12, rsi_24, boll, atr, vwma
-                RSI说明：rsi=RSI(14)标准，rsi_6=RSI(6)短期/RSI1，
-                        rsi_12=RSI(12)中期/RSI2，rsi_24=RSI(24)长期/RSI3
+                         rsi, boll, atr, vwma
+                RSI说明：返回4个周期的RSI值 - RSI(6)/RSI(12)/RSI(14)/RSI(24)
             start_date: 开始日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
             end_date: 结束日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
         
