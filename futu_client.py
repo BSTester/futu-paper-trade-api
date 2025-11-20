@@ -12,6 +12,7 @@ from models import (
     TradeResponse, StockSearchResult
 )
 from technical_indicators import calculate_indicators_series, SUPPORTED_INDICATORS
+from kline_cache import get_kline_cache
 
 
 class FutuClient:
@@ -1001,17 +1002,22 @@ class FutuClient:
         req_section: int = 1
     ) -> Dict[str, Any]:
         """
-        获取K线数据
+        获取K线数据（带缓存）
+        
+        缓存策略：
+        - 日K及以上级别（daily/weekly/monthly/quarterly/yearly）使用缓存
+        - 分钟级数据不缓存，每次都从API获取
+        - 缓存有效期：当天，每天0点自动失效
         
         Args:
             stock_id: 股票ID (security_id)
             kline_type: K线类型
-                - 1: 分时
-                - 2: 日K
-                - 3: 周K
-                - 4: 月K
-                - 5: 年K
-                - 11: 季K
+                - 1: 分时（不缓存）
+                - 2: 日K（缓存）
+                - 3: 周K（缓存）
+                - 4: 月K（缓存）
+                - 5: 年K（缓存）
+                - 11: 季K（缓存）
             market_type: 市场类型 (US/HK/CN)，用于时区转换
             symbol: 符号类型（可选，会根据kline_type自动设置）
             security: 证券类型（默认1）
@@ -1020,6 +1026,12 @@ class FutuClient:
         Returns:
             K线数据（时间已转换为市场本地时间）
         """
+        # 尝试从缓存获取（只缓存日K及以上级别）
+        cache = get_kline_cache()
+        cached_data = cache.get(stock_id, kline_type, market_type)
+        if cached_data is not None:
+            return cached_data
+        
         # 根据K线类型自动设置symbol参数
         # 参考富途API的实际参数映射
         if symbol is None:
@@ -1073,6 +1085,9 @@ class FutuClient:
                     if "server_time" in minus_data:
                         minus_data["server_local_time"] = self._convert_timestamp_to_local_time(minus_data["server_time"], market_type)
             
+            # 缓存数据（只缓存日K及以上级别）
+            cache.set(stock_id, kline_type, market_type, kline_data)
+            
             return kline_data
         return {}
 
@@ -1094,7 +1109,9 @@ class FutuClient:
                 - 日线及以上: daily, weekly, monthly, quarterly, yearly
             indicator: 要计算的指标（每次只返回一个指标）
                 可选指标：close_50_sma, close_200_sma, close_10_ema, macd,
-                         rsi, boll, atr, vwma
+                         rsi, rsi_6, rsi_12, rsi_24, boll, atr, vwma
+                RSI说明：rsi=RSI(14)标准，rsi_6=RSI(6)短期/RSI1，
+                        rsi_12=RSI(12)中期/RSI2，rsi_24=RSI(24)长期/RSI3
             start_date: 开始日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
             end_date: 结束日期（可选，格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS）
         
@@ -1278,6 +1295,8 @@ class FutuClient:
                 }
         
         # 转换为DataFrame
+        # 注意：不要在这里过滤日期范围！需要用所有历史数据计算技术指标
+        # 日期范围过滤应该在计算完指标后，只过滤返回结果
         df_data = []
         for item in kline_list:
             # 判断数据格式：日K及以上使用 k/o/c/h/l/v，分时使用 time/price/open/high/low/volume
@@ -1285,23 +1304,23 @@ class FutuClient:
             # 时间字段
             time_val = item.get("time") or item.get("k")
             
-            # 如果指定了日期范围，过滤数据
-            if start_timestamp and time_val < start_timestamp:
-                continue
-            if end_timestamp and time_val > end_timestamp:
-                continue
-            
             # 收盘价
             close_price = item.get("cc_price")
             if close_price is None:
                 # 尝试 c 字段（日K格式）
                 close_price = item.get("c")
                 if close_price is not None:
+                    # 检查是否需要除以10000（如果值过大，说明是原始值）
                     close_price = float(close_price)
+                    # 如果价格大于100000，很可能需要除以10000
+                    if close_price > 100000:
+                        close_price = close_price / 10000
                 else:
                     # 尝试 price 字段（分时格式）
                     price_raw = item.get("price", 0)
                     close_price = price_raw / 10000 if price_raw else 0
+            else:
+                close_price = float(close_price)
             
             # 开盘价
             open_price = item.get("cc_open")
@@ -1309,11 +1328,16 @@ class FutuClient:
                 # 尝试 o 字段（日K格式）
                 open_price = item.get("o")
                 if open_price is not None:
+                    # 检查是否需要除以10000（如果值过大，说明是原始值）
                     open_price = float(open_price)
+                    if open_price > 100000:
+                        open_price = open_price / 10000
                 else:
                     # 尝试 open 字段（分时格式）
                     open_raw = item.get("open", 0)
                     open_price = open_raw / 10000 if open_raw else 0
+            else:
+                open_price = float(open_price)
             
             # 最高价
             high_price = item.get("cc_high")
@@ -1321,11 +1345,16 @@ class FutuClient:
                 # 尝试 h 字段（日K格式）
                 high_price = item.get("h")
                 if high_price is not None:
+                    # 检查是否需要除以10000（如果值过大，说明是原始值）
                     high_price = float(high_price)
+                    if high_price > 100000:
+                        high_price = high_price / 10000
                 else:
                     # 尝试 high 字段（分时格式）
                     high_raw = item.get("high", 0)
                     high_price = high_raw / 10000 if high_raw else 0
+            else:
+                high_price = float(high_price)
             
             # 最低价
             low_price = item.get("cc_low")
@@ -1333,11 +1362,16 @@ class FutuClient:
                 # 尝试 l 字段（日K格式）
                 low_price = item.get("l")
                 if low_price is not None:
+                    # 检查是否需要除以10000（如果值过大，说明是原始值）
                     low_price = float(low_price)
+                    if low_price > 100000:
+                        low_price = low_price / 10000
                 else:
                     # 尝试 low 字段（分时格式）
                     low_raw = item.get("low", 0)
                     low_price = low_raw / 10000 if low_raw else 0
+            else:
+                low_price = float(low_price)
             
             # 成交量
             volume = item.get("volume") or item.get("v", 0)
@@ -1407,16 +1441,16 @@ class FutuClient:
                 "message": "所有数据点的价格都为0或时间戳无效"
             }
         
-        # 如果是周K及以下时间间隔且未指定日期范围，基于数据最新日期限制为最近1个月
-        if apply_default_range and len(df) > 0:
+        # 如果是周K及以下时间间隔且未指定日期范围，设置默认返回最近1个月的结果
+        # 注意：不要在这里过滤df，因为需要用所有历史数据计算技术指标
+        # 只需要记录日期范围，稍后过滤返回结果
+        if apply_default_range and len(df) > 0 and not start_date and not end_date:
             from datetime import datetime, timedelta
             # 获取数据中的最新时间戳
             latest_timestamp = df['time'].max()
             # 计算1个月前的时间戳（30天）
             one_month_ago_timestamp = latest_timestamp - (30 * 24 * 60 * 60)
-            # 过滤数据
-            df = df[df['time'] >= one_month_ago_timestamp].copy()
-            # 记录自动设置的日期范围
+            # 记录自动设置的日期范围（用于后续过滤返回结果）
             start_date = datetime.fromtimestamp(one_month_ago_timestamp).strftime("%Y-%m-%d")
             end_date = datetime.fromtimestamp(latest_timestamp).strftime("%Y-%m-%d")
         
@@ -1456,12 +1490,54 @@ class FutuClient:
                 "market_type": market_type
             }
         
+        # 如果用户指定了日期范围，只返回该范围内的指标数据
+        # 但计算时使用了所有历史数据，确保MACD等指标的准确性
+        if start_date or end_date:
+            from datetime import datetime
+            filtered_data = {}
+            
+            for date_str, values in indicator_data.items():
+                # 解析日期字符串
+                try:
+                    # 尝试解析不同的日期格式
+                    if len(date_str) == 10:  # YYYY-MM-DD
+                        item_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    else:  # YYYY-MM-DD HH:MM:SS
+                        item_date = datetime.strptime(date_str.split()[0], "%Y-%m-%d")
+                    
+                    # 检查是否在日期范围内
+                    if start_date:
+                        req_start = datetime.strptime(start_date, "%Y-%m-%d")
+                        if item_date < req_start:
+                            continue
+                    
+                    if end_date:
+                        req_end = datetime.strptime(end_date, "%Y-%m-%d")
+                        if item_date > req_end:
+                            continue
+                    
+                    filtered_data[date_str] = values
+                except:
+                    # 如果日期解析失败，保留该数据
+                    filtered_data[date_str] = values
+            
+            indicator_data = filtered_data
+        
         # 获取最新价格
         latest_price = df['close'].iloc[-1]
         
-        # 获取时间范围
-        start_time = int(df['time'].iloc[0])
-        end_time = int(df['time'].iloc[-1])
+        # 获取时间范围（使用过滤后的数据）
+        if indicator_data:
+            # 获取第一个和最后一个日期
+            dates = list(indicator_data.keys())
+            first_date = dates[0]
+            last_date = dates[-1]
+        else:
+            # 如果没有数据，使用原始df的范围
+            start_time = int(df['time'].iloc[0])
+            end_time = int(df['time'].iloc[-1])
+            first_date = self._convert_timestamp_to_local_time(start_time, market_type)
+            last_date = self._convert_timestamp_to_local_time(end_time, market_type)
         
         result = {
             "meta": {
@@ -1473,9 +1549,9 @@ class FutuClient:
                 "indicator": indicator,
                 "indicator_name": SUPPORTED_INDICATORS[indicator][0],
                 "latest_price": float(latest_price),
-                "data_points": len(df),
-                "start_date": self._convert_timestamp_to_local_time(start_time, market_type),
-                "end_date": self._convert_timestamp_to_local_time(end_time, market_type)
+                "data_points": len(indicator_data),
+                "start_date": first_date,
+                "end_date": last_date
             },
             "data": indicator_data
         }

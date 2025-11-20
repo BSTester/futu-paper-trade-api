@@ -82,14 +82,22 @@ def calculate_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int
     """
     计算MACD指标
     
+    MACD指标说明：
+    - DIF (差离值) = 快速EMA - 慢速EMA
+    - DEA (信号线) = DIF的EMA
+    - MACD柱 = (DIF - DEA) * 2  （注意：传统计算会乘以2）
+    
     Returns:
         dict: 包含 'macd', 'signal', 'histogram' 的字典
+        - macd: DIF线（快线-慢线）
+        - signal: DEA线（信号线）
+        - histogram: MACD柱状图 = (DIF - DEA) * 2
     """
     ema_fast = calculate_ema(df, fast)
     ema_slow = calculate_ema(df, slow)
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
+    macd_line = ema_fast - ema_slow  # DIF
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()  # DEA
+    histogram = (macd_line - signal_line) * 2  # MACD柱 = (DIF - DEA) * 2
     
     return {
         'macd': macd_line,
@@ -99,12 +107,38 @@ def calculate_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int
 
 
 def calculate_rsi(df: pd.DataFrame, period: int = 14, column: str = 'close') -> pd.Series:
-    """计算相对强弱指标 (RSI)"""
-    delta = df[column].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    """计算相对强弱指标 (RSI)
     
-    rs = gain / loss
+    使用Wilder's Smoothing方法（标准RSI计算方法）
+    
+    Args:
+        df: 包含价格数据的DataFrame
+        period: RSI周期，默认14
+            - 6: 短期RSI（通常对应股票软件的RSI1）
+            - 12: 中期RSI（通常对应股票软件的RSI2）
+            - 14: 标准RSI（国际标准）
+            - 24: 长期RSI（通常对应股票软件的RSI3）
+        column: 价格列名，默认'close'
+    
+    Returns:
+        RSI序列
+    """
+    delta = df[column].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    
+    # 第一个值使用SMA
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+    
+    # 后续值使用Wilder's Smoothing
+    # Wilder's Smoothing: new_avg = (prev_avg * (period - 1) + current_value) / period
+    # 这等价于 EMA with alpha = 1/period
+    for i in range(period, len(df)):
+        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
+        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+    
+    rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
@@ -169,7 +203,10 @@ SUPPORTED_INDICATORS = {
     "macd": ("MACD", "close"),
     "macds": ("MACD Signal", "close"),
     "macdh": ("MACD Histogram", "close"),
-    "rsi": ("RSI", "close"),
+    "rsi": ("RSI(14)", "close"),
+    "rsi_6": ("RSI(6)", "close"),
+    "rsi_12": ("RSI(12)", "close"),
+    "rsi_24": ("RSI(24)", "close"),
     "boll": ("Bollinger Middle", "close"),
     "boll_ub": ("Bollinger Upper Band", "close"),
     "boll_lb": ("Bollinger Lower Band", "close"),
@@ -185,7 +222,10 @@ INDICATOR_DESCRIPTIONS = {
     "macd": "MACD: Computes momentum via differences of EMAs. Usage: Look for crossovers and divergence as signals of trend changes. Tips: Confirm with other indicators in low-volatility or sideways markets.",
     "macds": "MACD Signal: An EMA smoothing of the MACD line. Usage: Use crossovers with the MACD line to trigger trades. Tips: Should be part of a broader strategy to avoid false positives.",
     "macdh": "MACD Histogram: Shows the gap between the MACD line and its signal. Usage: Visualize momentum strength and spot divergence early. Tips: Can be volatile; complement with additional filters in fast-moving markets.",
-    "rsi": "RSI: Measures momentum to flag overbought/oversold conditions. Usage: Apply 70/30 thresholds and watch for divergence to signal reversals. Tips: In strong trends, RSI may remain extreme; always cross-check with trend analysis.",
+    "rsi": "RSI(14): Standard 14-period RSI. Measures momentum to flag overbought/oversold conditions. Usage: Apply 70/30 thresholds and watch for divergence to signal reversals. Tips: In strong trends, RSI may remain extreme; always cross-check with trend analysis.",
+    "rsi_6": "RSI(6): Short-term 6-period RSI (often labeled as RSI1 in Chinese stock software). More sensitive to price changes. Usage: Identify quick momentum shifts. Tips: More prone to false signals; use with other indicators.",
+    "rsi_12": "RSI(12): Medium-term 12-period RSI (often labeled as RSI2 in Chinese stock software). Balanced sensitivity. Usage: Capture medium-term momentum. Tips: Good balance between responsiveness and reliability.",
+    "rsi_24": "RSI(24): Long-term 24-period RSI (often labeled as RSI3 in Chinese stock software). Smoother and less volatile. Usage: Identify longer-term trends. Tips: Slower to react but more reliable.",
     "boll": "Bollinger Middle: A 20 SMA serving as the basis for Bollinger Bands. Usage: Acts as a dynamic benchmark for price movement. Tips: Combine with the upper and lower bands to effectively spot breakouts or reversals.",
     "boll_ub": "Bollinger Upper Band: Typically 2 standard deviations above the middle line. Usage: Signals potential overbought conditions and breakout zones. Tips: Confirm signals with other tools; prices may ride the band in strong trends.",
     "boll_lb": "Bollinger Lower Band: Typically 2 standard deviations below the middle line. Usage: Indicates potential oversold conditions. Tips: Use additional analysis to avoid false reversal signals.",
@@ -202,6 +242,9 @@ INDICATOR_CALC_FUNCS = {
     "macds": lambda df: calculate_macd(df)['signal'],
     "macdh": lambda df: calculate_macd(df)['histogram'],
     "rsi": lambda df: calculate_rsi(df, 14),
+    "rsi_6": lambda df: calculate_rsi(df, 6),
+    "rsi_12": lambda df: calculate_rsi(df, 12),
+    "rsi_24": lambda df: calculate_rsi(df, 24),
     "boll": lambda df: calculate_bollinger_bands(df)['middle'],
     "boll_ub": lambda df: calculate_bollinger_bands(df)['upper'],
     "boll_lb": lambda df: calculate_bollinger_bands(df)['lower'],

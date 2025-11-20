@@ -13,6 +13,7 @@ from models import (
     CancelOrderRequest
 )
 from config import API_HOST, API_PORT, API_KEY
+from kline_cache import get_kline_cache
 
 
 def convert_to_csv_text(data: Dict[str, Any]) -> str:
@@ -422,7 +423,8 @@ async def get_technical_analysis(
       - 分钟级: 1min, 5min, 15min, 30min, 60min
       - 日线及以上: daily, weekly, monthly, quarterly, yearly
     - **indicator**: 技术指标（可选，默认macd）
-      - 可选指标：close_50_sma, close_200_sma, close_10_ema, macd, rsi, boll, atr, vwma
+      - 可选指标：close_50_sma, close_200_sma, close_10_ema, macd, rsi, rsi_6, rsi_12, rsi_24, boll, atr, vwma
+      - RSI说明：rsi=RSI(14)标准，rsi_6=RSI(6)短期/RSI1，rsi_12=RSI(12)中期/RSI2，rsi_24=RSI(24)长期/RSI3
     - **format**: 返回格式（可选，默认json）
       - json: JSON格式
       - csv: CSV格式
@@ -781,6 +783,9 @@ async def get_kline(
                 close_price = price_raw / 10000 if price_raw else 0
             else:
                 close_price = float(close_price)
+                # 检查是否需要除以10000（如果值过大，说明是原始值）
+                if close_price > 100000:
+                    close_price = close_price / 10000
             
             # 如果没有收盘价，跳过这条数据
             if close_price == 0:
@@ -793,6 +798,9 @@ async def get_kline(
                 open_price = open_raw / 10000 if open_raw else 0
             else:
                 open_price = float(open_price)
+                # 检查是否需要除以10000（如果值过大，说明是原始值）
+                if open_price > 100000:
+                    open_price = open_price / 10000
             
             # 如果开盘价为0，使用收盘价
             if open_price == 0:
@@ -805,6 +813,9 @@ async def get_kline(
                 high_price = high_raw / 10000 if high_raw else 0
             else:
                 high_price = float(high_price)
+                # 检查是否需要除以10000（如果值过大，说明是原始值）
+                if high_price > 100000:
+                    high_price = high_price / 10000
             
             # 如果最高价为0，使用收盘价
             if high_price == 0:
@@ -817,6 +828,9 @@ async def get_kline(
                 low_price = low_raw / 10000 if low_raw else 0
             else:
                 low_price = float(low_price)
+                # 检查是否需要除以10000（如果值过大，说明是原始值）
+                if low_price > 100000:
+                    low_price = low_price / 10000
             
             # 如果最低价为0，使用收盘价
             if low_price == 0:
@@ -966,6 +980,164 @@ async def get_kline(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取K线数据失败: {str(e)}")
+
+
+@app.get("/api/cache/stats", tags=["系统"])
+async def get_cache_stats(authenticated: bool = Security(verify_api_key)):
+    """
+    获取K线数据缓存统计信息
+    
+    返回缓存的统计信息，包括：
+    - 总缓存数量
+    - 有效缓存数量
+    - 过期缓存数量
+    - TTL（生存时间）
+    - 最老和最新缓存的时间
+    
+    **示例**:
+    ```
+    GET /api/cache/stats
+    ```
+    """
+    try:
+        cache = get_kline_cache()
+        stats = cache.get_stats()
+        return {
+            "status": "success",
+            "cache_stats": stats,
+            "message": "K线数据缓存统计（只缓存日K及以上级别，分钟级数据不缓存，TTL=24小时）"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取缓存统计失败: {str(e)}")
+
+
+@app.get("/api/cache/info", tags=["系统"])
+async def get_cache_info(
+    symbol: str,
+    interval: str = "daily",
+    authenticated: bool = Security(verify_api_key)
+):
+    """
+    获取指定股票的缓存详细信息
+    
+    - **symbol**: 股票代码（必填，支持带后缀格式如 00700.HK, 600519.SH）
+    - **interval**: 时间间隔（可选，默认daily）
+      - 分钟级: 1min, 5min, 15min, 30min, 60min
+      - 日线及以上: daily, weekly, monthly, quarterly, yearly
+    
+    返回指定股票的缓存信息，包括：
+    - 是否已缓存
+    - 缓存时间
+    - 已存在时长
+    - 剩余有效时长
+    - 过期时间
+    
+    **示例**:
+    ```
+    GET /api/cache/info?symbol=AAPL&interval=daily
+    ```
+    """
+    try:
+        # 映射interval到kline_type
+        interval_mapping = {
+            "1min": 1,
+            "5min": 1,
+            "15min": 1,
+            "30min": 1,
+            "60min": 1,
+            "daily": 2,
+            "weekly": 3,
+            "monthly": 4,
+            "yearly": 5,
+            "quarterly": 11
+        }
+        
+        kline_type = interval_mapping.get(interval)
+        if kline_type is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的时间间隔: {interval}"
+            )
+        
+        # 标准化股票代码并判断市场类型
+        normalized_symbol = futu_client._normalize_stock_code(symbol)
+        market_type = futu_client._detect_market_type(normalized_symbol)
+        
+        # 搜索股票获取security_id
+        stocks = await futu_client.search_stock(normalized_symbol, market_type)
+        if not stocks:
+            raise HTTPException(status_code=404, detail=f"未找到股票: {symbol}")
+        
+        stock_id = stocks[0].security_id
+        stock_name = stocks[0].stock_name
+        
+        # 获取缓存信息
+        cache = get_kline_cache()
+        cache_info = cache.get_cache_info(stock_id, kline_type, market_type)
+        
+        return {
+            "status": "success",
+            "symbol": symbol,
+            "stock_name": stock_name,
+            "stock_id": stock_id,
+            "market_type": market_type,
+            "interval": interval,
+            "kline_type": kline_type,
+            "cache_info": cache_info
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取缓存信息失败: {str(e)}")
+
+
+@app.post("/api/cache/clear", tags=["系统"])
+async def clear_cache(authenticated: bool = Security(verify_api_key)):
+    """
+    清空所有K线数据缓存
+    
+    清空所有缓存的K线数据，下次请求时会重新从API获取
+    
+    **注意**：此操作会清空所有缓存，包括今天有效的缓存
+    
+    **示例**:
+    ```
+    POST /api/cache/clear
+    ```
+    """
+    try:
+        cache = get_kline_cache()
+        cache.clear()
+        return {
+            "status": "success",
+            "message": "所有K线数据缓存已清空"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"清空缓存失败: {str(e)}")
+
+
+@app.post("/api/cache/clear-expired", tags=["系统"])
+async def clear_expired_cache(authenticated: bool = Security(verify_api_key)):
+    """
+    清理过期的K线数据缓存
+    
+    只清理过期的缓存（非今天的缓存），保留今天有效的缓存
+    
+    **示例**:
+    ```
+    POST /api/cache/clear-expired
+    ```
+    """
+    try:
+        cache = get_kline_cache()
+        cleared_count = cache.clear_expired()
+        return {
+            "status": "success",
+            "cleared_count": cleared_count,
+            "message": f"已清理 {cleared_count} 个过期缓存"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"清理过期缓存失败: {str(e)}")
 
 
 if __name__ == "__main__":
